@@ -37,8 +37,10 @@ volatile sig_atomic_t stop;
 // time in ms to wait between changing inputs
 // value too high = repeated inputs
 // value too low = skipped inputs
-// 24 seems fine although a few inputs might get skipped...
-#define WAIT_MS 24
+// 24 seems fine for spl3 although a few inputs might get skipped...
+#define WAIT_MS_SPL3 24
+// for spl2 we have to wait a little longer, otherwise it drops drawing (but not position) inputs
+#define WAIT_MS_SPL2 34
 // timeout for the usb endpoint
 #define EP_TIMEOUT 33
 
@@ -119,8 +121,67 @@ bool load_bmp(const char * filename) {
     return true;
 }
 
+// simulates the drawing process (quickly) to estimate the number of inputs that will be made
+int calculate_inputs_count() {
+    int count = 0;
+    int print_x = 0;
+    int print_y = 0;
+    bool reversing = false;
+    while (true) {
+        // if we're at the end of a line, move onto the next one
+        if (print_x >= PRINT_WIDTH) {
+            print_x = PRINT_WIDTH - 1;
+            print_y++;
+            reversing = true;
+        } else if (print_x < 0) {
+            print_x = 0;
+            print_y++;
+            reversing = false;
+        }
+        // check if this is the end of the line (no more white after this)
+        // and check for the start of the next line after that
+        bool end_of_line = false;
+        bool has_tripped = false;
+        if (!reversing) {
+            for (int i = print_x; i < PRINT_WIDTH; i++) {
+                if (pixel_grid[print_y][i] >= 0x80) has_tripped = true;
+            }
+            for (int i = print_x; i < PRINT_WIDTH; i++) {
+                if (pixel_grid[print_y + 1][i] >= 0x80) has_tripped = true;
+            }
+            end_of_line = !has_tripped;
+        } else {
+            for (int i = print_x; i >= 0; i--) {
+                if (pixel_grid[print_y][i] >= 0x80) has_tripped = true;
+            }
+            for (int i = print_x; i >= 0; i--) {
+                if (pixel_grid[print_y + 1][i] >= 0x80) has_tripped = true;
+            }
+            end_of_line = !has_tripped;
+        }
+        if (end_of_line) {
+            print_y++;
+            reversing = !reversing;
+        }
+        // if we're past the height then we're done
+        if (print_y >= PRINT_HEIGHT) {
+            break;
+        }
+        // move forward in the image
+        if (reversing)
+            print_x--;
+        else
+            print_x++;
+        count++;
+    }
+    return count;
+}
+
 int main(int argc, char**argv)
 {
+    // cli options
+    bool spoon2 = false;
+    bool log_pos = false;
     // prepare an example pixel grid for testing
     // * * * * * 
     //  * * * * *
@@ -133,7 +194,7 @@ int main(int argc, char**argv)
         }
     }
 
-    if (argc != 2) {
+    if (argc < 2) {
         printf("usage: %s /path/to/2-color.bmp\n", argv[0]);
         return 0;
     }
@@ -142,6 +203,15 @@ int main(int argc, char**argv)
     if (argv[1][0] != '%' && !load_bmp(argv[1])) {
         printf("error: not continuing\n");
         return 1;
+    }
+    // parse command line args
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "--splatoon2") == 0 ||
+            strcmp(argv[i], "-s2") == 0)
+            spoon2 = true;
+        if (strcmp(argv[i], "--log_pos") == 0 ||
+            strcmp(argv[i], "-l") == 0)
+            log_pos = true;
     }
 
     // set up program
@@ -172,6 +242,15 @@ int main(int argc, char**argv)
     libusbd_iface_add_endpoint(pCtx, iface_num, USB_EPATTR_TTYPE_INTR, USB_EP_DIR_IN, 64, 5, 0, &ep_out);
     libusbd_iface_finalize(pCtx, iface_num);
 
+    // estimate the time it'll take to complete, multiplied by 2
+    int est_inputs = calculate_inputs_count() * 2;
+    // calculate time in secs/mins
+    uint64_t time_ms = est_inputs * (spoon2 ? WAIT_MS_SPL2 : WAIT_MS_SPL3);
+    int time_sec = time_ms / 1000;
+    int time_mins = time_sec / 60;
+    int time_sec_r = time_sec % 60;
+    printf("estimated time: %im%is (~%llums)\n", time_mins, time_sec_r, time_ms);
+
     USB_JoystickReport_Input_t out;
     int ret = 0;
     int idx = 0;
@@ -199,11 +278,12 @@ int main(int argc, char**argv)
             // spam A presses to get past the controller connection screen
             if (idx < 30 && (idx & 1))
                 out.Button |= SWITCH_A;
-            // press left stick to clear the page
+            // press minus (sp2)/left stick (sp3) to clear the page
             else if (idx == 50)
-                out.Button |= SWITCH_LCLICK;
-            // press L a few times (alternating) to get to the smallest pixel type
-            else if ((idx & 1) && idx < 50)
+                out.Button |= spoon2 ? SWITCH_MINUS : SWITCH_LCLICK;
+            // on sp3 press L a few times (alternating) to get to the smallest pixel type
+            // on sp2 we have to assume the type is already selected - thats on the user
+            else if (!spoon2 && (idx & 1) && idx < 50)
                 out.Button |= SWITCH_L;
             // set sticks to navigate to top left of drawing
             out.LX = STICK_MIN;
@@ -269,7 +349,9 @@ int main(int argc, char**argv)
                 out.HAT = HAT_BOTTOM;
             else if (print_y < last_y)
                 out.HAT = HAT_TOP;
-            printf("x: %i, y: %i\n", print_x, print_y);
+            // log the position
+            if (log_pos)
+                printf("x: %i, y: %i\n", print_x, print_y);
             // if there's a pixel here, draw it
             if (pixel_grid[print_y][print_x] >= 0x80)
                 out.Button |= SWITCH_A;
@@ -282,7 +364,7 @@ int main(int argc, char**argv)
             else
                 print_x++;
         }
-
+        // send out the input data packets
         ret = libusbd_ep_write(pCtx, iface_num, ep_out, &out, sizeof(out), EP_TIMEOUT);
         if (ret == LIBUSBD_NOT_ENUMERATED) {
             printf("waiting for connection\n");
@@ -294,9 +376,12 @@ int main(int argc, char**argv)
             printf("error (%08x)\n", ret);
             sleep(1);
         }
-        msleep(WAIT_MS);
+        // sleep
+        msleep(spoon2 ? WAIT_MS_SPL2 : WAIT_MS_SPL3);
         idx++;
     }
+    // print the last position
+    printf("x: %i, y: %i\n", print_x, print_y);
     // send an empty hid report to prevent stuck inputs after exiting the loop
     memset(&out, 0, sizeof(out));
     libusbd_ep_write(pCtx, iface_num, ep_out, &out, sizeof(out), EP_TIMEOUT);

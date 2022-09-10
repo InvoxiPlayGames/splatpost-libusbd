@@ -1,6 +1,6 @@
 # splatpost-libusbd
 
-A pixel printer for Splatoon 3's drawing/posting feature, using the [libusbd](https://github.com/shinyquagsire23/libusbd) library.
+A pixel printer for Splatoon 3's (and Splatoon 2's) drawing/posting feature, using the [libusbd](https://github.com/shinyquagsire23/libusbd) library.
 
 ## Building
 
@@ -18,12 +18,13 @@ Compile [libusbd](https://github.com/shinyquagsire23/libusbd), then copy `libusb
    * The image might not start drawing, your Switch still showing the controller connection screen. If this happens, CTRL+C and re-run the command.
    * Sometimes the drawing process can get slightly offset after missing a few inputs. It might help to close everything on your Mac.
 
+*For Splatoon 2, add `--splatoon2` to the command line. Make sure the drawing screen is set to use the smallest pencil, this isn't done automatically.*
+
 *Typing `./splatpost %` will print an example alternating pixel grid.*
 
 ## TODO:
 
 * Fix the "desync" issues where an input or two will be missed, offsetting the whole image.
-* Splatoon 2 support
 * More BMP colour modes + dithering
 * Faster printing (TSP solving algorithm?)
 * More input image files (dithering, PNG?)
