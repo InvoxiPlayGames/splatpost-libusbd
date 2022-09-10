@@ -1,0 +1,8 @@
+# leftover symbol files
+*.dSYM
+# the library itself (compile this yourself)
+*.dylib
+# any leftover images
+*.bmp
+# the binary
+splatpost
