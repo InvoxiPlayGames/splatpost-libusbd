@@ -2,6 +2,8 @@
 *.dSYM
 # the library itself (compile this yourself)
 *.dylib
+# i hate you macos
+.DS_Store
 # any leftover images
 *.bmp
 # the binary
