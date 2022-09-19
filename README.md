@@ -18,6 +18,8 @@ Compile [libusbd](https://github.com/shinyquagsire23/libusbd), then copy `libusb
    * The image might not start drawing, your Switch still showing the controller connection screen. If this happens, CTRL+C and re-run the command.
    * Sometimes the drawing process can get slightly offset after missing a few inputs. It might help to close everything on your Mac.
 
+For images with more black pixels than white pixels, if you fill the drawing grid with black manually before running, the `--invert` command line option can be provided to erase white pixels rather than print black pixels.
+
 *For Splatoon 2, add `--splatoon2` to the command line. Make sure the drawing screen is set to use the smallest pencil, this isn't done automatically.*
 
 *Typing `./splatpost %` will print an example alternating pixel grid.*

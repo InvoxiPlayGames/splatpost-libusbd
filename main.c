@@ -37,8 +37,8 @@ volatile sig_atomic_t stop;
 // time in ms to wait between changing inputs
 // value too high = repeated inputs
 // value too low = skipped inputs
-// 24 seems fine for spl3 although a few inputs might get skipped...
-#define WAIT_MS_SPL3 24
+// 26 seems fine for spl3 although a few inputs might get skipped... (24 is too risky)
+#define WAIT_MS_SPL3 26
 // for spl2 we have to wait a little longer, otherwise it drops drawing (but not position) inputs
 #define WAIT_MS_SPL2 34
 // timeout for the usb endpoint
@@ -182,15 +182,16 @@ int main(int argc, char**argv)
     // cli options
     bool spoon2 = false;
     bool log_pos = false;
+    bool invert = false;
     // prepare an example pixel grid for testing
     // * * * * * 
     //  * * * * *
     // * * * * *
     // repeating, the absolute worst case for optimisations
     memset(pixel_grid, 0, sizeof(pixel_grid));
-    for (int i = 0; i < PRINT_HEIGHT; i++) {
-        for (int j = i % 2; j < PRINT_WIDTH; j += 2) {
-            pixel_grid[i][j] = 0xFF;
+    for (int y = 0; y < PRINT_HEIGHT; y++) {
+        for (int x = y % 2; x < PRINT_WIDTH; x += 2) {
+            pixel_grid[y][x] = 0xFF;
         }
     }
 
@@ -212,6 +213,16 @@ int main(int argc, char**argv)
         if (strcmp(argv[i], "--log_pos") == 0 ||
             strcmp(argv[i], "-l") == 0)
             log_pos = true;
+        if (strcmp(argv[i], "--invert") == 0 ||
+            strcmp(argv[i], "-i") == 0) {
+            invert = true;
+            // invert the image
+            for (int y = 0; y < PRINT_HEIGHT; y++) {
+                for (int x = 0; x < PRINT_WIDTH; x++) {
+                    pixel_grid[y][x] = (pixel_grid[y][x] >= 0x80 ? 0x00 : 0xFF);
+                }
+            }
+        }
     }
 
     // set up program
@@ -279,7 +290,7 @@ int main(int argc, char**argv)
             if (idx < 30 && (idx & 1))
                 out.Button |= SWITCH_A;
             // press minus (sp2)/left stick (sp3) to clear the page
-            else if (idx == 50)
+            else if (!invert && idx == 50)
                 out.Button |= spoon2 ? SWITCH_MINUS : SWITCH_LCLICK;
             // on sp3 press L a few times (alternating) to get to the smallest pixel type
             // on sp2 we have to assume the type is already selected - thats on the user
@@ -354,7 +365,7 @@ int main(int argc, char**argv)
                 printf("x: %i, y: %i\n", print_x, print_y);
             // if there's a pixel here, draw it
             if (pixel_grid[print_y][print_x] >= 0x80)
-                out.Button |= SWITCH_A;
+                out.Button |= (invert ? SWITCH_B : SWITCH_A);
             // keep note of our last position
             last_x = print_x;
             last_y = print_y;

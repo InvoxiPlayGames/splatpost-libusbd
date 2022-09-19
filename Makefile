@@ -31,7 +31,6 @@ all: $(TARGET)
 
 $(TARGET): $(SOURCES) $(HEADERS)
 	$(CC) $(CFLAGS) $(FRAMEWORKS) $(DEFINES) $(LDFLAGS) -o $@ $(SOURCES)
-	codesign -s - $@
 
 clean:
 	rm -f -- $(TARGET)
